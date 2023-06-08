@@ -91,7 +91,7 @@ def paganin_filter(
 
     # New dimensions and pad value after padding.
     py, pz, val = _calc_pad(data, pixel_size, dist, energy, pad)
-    print(filt)
+
     # Compute the reciprocal grid.
     dx, dy, dz = data.shape
     if filt == 'paganin':
