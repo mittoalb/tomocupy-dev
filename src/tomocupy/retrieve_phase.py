@@ -58,7 +58,7 @@ def _wavelength(energy):
 
 
 def paganin_filter(
-        data, pixel_size=1e-4, dist=50, energy=20, alpha=1e-3, filt='paganin', db=1000, pad=True):
+        data, pixel_size=1e-4, dist=50, energy=20, alpha=1e-3, method='paganin', db=1000, pad=True):
     """
     Perform single-step phase retrieval from phase-contrast measurements
     :cite:`Paganin:02`.
@@ -75,12 +75,10 @@ def paganin_filter(
         Energy of incident wave in keV.
     alpha : float, optional
         Regularization parameter for Paganin method.
+    filt : string
+        phase retrieval method   
     db : float, optional
     	delta/beta for generalized Paganin phase retrieval 
-    theta : float
-    	phase dimple size for Z paganin method
-    gamma : int, positive   
-        regularization for Z paganin method
     pad : bool, optional
         If True, extend the size of the projections by padding with zeros.
     Returns
@@ -93,24 +91,18 @@ def paganin_filter(
 
     # Compute the reciprocal grid.
     dx, dy, dz = data.shape
-    if filt == 'paganin':
+    if method == 'paganin':
     	w2 = _reciprocal_grid(pixel_size, dy + 2 * py, dz + 2 * pz)
-    elif filt == 'Gpaganin':
-        print('frequency')
-        kf = _reciprocal_gridG(pixel_size, dy + 2 * py, dz + 2 * pz)
-        
-        
-    # Filter in Fourier space.
-    if filt == 'paganin':
-    	phase_filter = cp.fft.fftshift(
+        phase_filter = cp.fft.fftshift(
         	_paganin_filter_factor(energy, dist, alpha, w2))
-    elif filt == 'Gpaganin':
-        print('phase')
+    elif method == 'Gpaganin':
+        kf = _reciprocal_gridG(pixel_size, dy + 2 * py, dz + 2 * pz)
         phase_filter = cp.fft.fftshift(
         	_paganin_filter_factorG(energy, dist, kf, pixel_size, db))
 
     prj = cp.full((dy + 2 * py, dz + 2 * pz), val, dtype=data.dtype)
-
+    _retrieve_phase(data, phase_filter, py, pz, prj, pad)
+    
     return data
 
 
@@ -184,8 +176,8 @@ def _paganin_filter_factorG(energy, dist, kf, pixel_size, db):
     	Generalized phase retrieval method
     	Paganin et al 2020
     """
-    alpha = db*(dist*_wavelength(energy))/(4*PI)
-    return 1 / (1.0 -(2*alpha/pixel_size**2)*(kf-2))
+    aph = db*(dist*_wavelength(energy))/(4*PI)
+    return 1 / (1.0 -(2*aph/pixel_size**2)*(kf-2))
     
 def _calc_pad_width(dim, pixel_size, wavelength, dist):
     pad_pix = cp.ceil(PI * wavelength * dist / pixel_size ** 2)
