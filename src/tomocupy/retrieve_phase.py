@@ -96,7 +96,7 @@ def paganin_filter(
     if filt == 'paganin':
     	w2 = _reciprocal_grid(pixel_size, dy + 2 * py, dz + 2 * pz)
     elif filt == 'Gpaganin':
-    	print('frequency')
+        print('frequency')
         kf = _reciprocal_gridG(pixel_size, dy + 2 * py, dz + 2 * pz)
         
         
@@ -105,7 +105,7 @@ def paganin_filter(
     	phase_filter = cp.fft.fftshift(
         	_paganin_filter_factor(energy, dist, alpha, w2))
     elif filt == 'Gpaganin':
-    	print('phase')
+        print('phase')
         phase_filter = cp.fft.fftshift(
         	_paganin_filter_factorG(energy, dist, kf, pixel_size, db))
 
