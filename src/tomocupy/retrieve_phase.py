@@ -75,8 +75,8 @@ def paganin_filter(
         Energy of incident wave in keV.
     alpha : float, optional
         Regularization parameter for Paganin method.
-    filt : string
-        phase retrieval method   
+    method : string
+        phase retrieval method. Standard Paganin or Generalized Paganin.
     db : float, optional
     	delta/beta for generalized Paganin phase retrieval 
     pad : bool, optional

@@ -245,7 +245,7 @@ SECTIONS['retrieve-phase'] = {
     'delta-beta': {
         'default': 1500.0,
         'type': float,
-        'help': "delta/beta material"},
+        'help': "delta/beta material for Generalized Paganin"},
     'retrieve-phase-pad': {
         'type': utils.positive_int,
         'default': 8,
