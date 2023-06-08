@@ -58,7 +58,7 @@ def _wavelength(energy):
 
 
 def paganin_filter(
-        data, pixel_size=1e-4, dist=50, energy=20, alpha=1e-3, filt, db=1000, pad=True):
+        data, pixel_size=1e-4, dist=50, energy=20, alpha=1e-3, filt='paganin', db=1000, pad=True):
     """
     Perform single-step phase retrieval from phase-contrast measurements
     :cite:`Paganin:02`.
