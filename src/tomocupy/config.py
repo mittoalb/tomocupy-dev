@@ -225,7 +225,7 @@ SECTIONS['retrieve-phase'] = {
         'default': 'none',
         'type': str,
         'help': "Phase retrieval correction method",
-        'choices': ['none', 'paganin', 'Gpaganin' , 'Zpaganin']},
+        'choices': ['none', 'paganin', 'Gpaganin']},
     'energy': {
         'default': 20,
         'type': float,
@@ -243,17 +243,9 @@ SECTIONS['retrieve-phase'] = {
         'type': float,
         'help': "Regularization parameter"},
     'delta-beta': {
-        'default': 300.0,
+        'default': 1500.0,
         'type': float,
         'help': "delta/beta material"},
-    'retrieve-phase-theta': {
-        'default': 2.0,
-        'type': float,
-        'help': "phase dimple size, in pixels"},        
-    'retrieve-phase-gamma': {
-        'default': 2,
-        'type': int,
-        'help': "Regularization parameter for Z paganin"},
     'retrieve-phase-pad': {
         'type': utils.positive_int,
         'default': 8,

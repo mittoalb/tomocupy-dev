@@ -94,7 +94,7 @@ def paganin_filter(
 
     # Compute the reciprocal grid.
     dx, dy, dz = data.shape
-    if filt == 'paganin' or filt == 'Zpaganin':
+    if filt == 'paganin':
     	w2 = _reciprocal_grid(pixel_size, dy + 2 * py, dz + 2 * pz)
     elif filt == 'Gpaganin':
         kf = _reciprocal_gridG(pixel_size, dy + 2 * py, dz + 2 * pz)
@@ -107,19 +107,10 @@ def paganin_filter(
     elif filt == 'Gpaganin':
         phase_filter = cp.fft.fftshift(
         	_paganin_filter_factorG(energy, dist, kf, pixel_size, db))
-    elif filt == 'Zpaganin':
-    	phase_filter = cp.fft.fftshift(
-    		_paganin_filter_factorZ(w2, theta, db, gamma))
 
     prj = cp.full((dy + 2 * py, dz + 2 * pz), val, dtype=data.dtype)
 
-    if filt == 'Zpaganin':
-    	data = 1.0 - data
-    	_retrieve_phase(data, phase_filter, py, pz, prj, pad)
-    	return data*0.5#median_filter(data*0.5,1)
-    else:
-    	_retrieve_phase(data, phase_filter, py, pz, prj, pad)
-    	return data
+    return data
 
 
 
@@ -174,8 +165,8 @@ def _calc_pad(data, pixel_size, dist, energy, pad):
     py, pz, val = 0, 0, 0
     if pad:
         val = _calc_pad_val(data)
-        py = _calc_pad_width(dy)
-        pz = _calc_pad_width(dz)
+        py = _calc_pad_width(dy, pixel_size, wavelength, dist)
+        pz = _calc_pad_width(dz, pixel_size, wavelength, dist)
 
     return py, pz, val
 
@@ -195,23 +186,9 @@ def _paganin_filter_factorG(energy, dist, kf, pixel_size, db):
     alpha = db*(dist*_wavelength(energy))/(4*PI)
     return 1 / (1.0 -(2*alpha/pixel_size**2)*(kf-2))
     
-
-def _paganin_filter_factorZ(w2, th, db, gamma):
-    """
-	Applied to zernike phase contrast
-	ref: paganin et al 2008
-	th: size of phase dimple
-	gamma: positive integer. Higher values lead to sharper images
-    """
-    k = th**(2.*gamma)
-    x = k*w2**gamma
-
-    return 1 / (1.0 - db*(1-np.exp(x)))
-
-def _calc_pad_width(dim):
-    #pad_pix = cp.ceil(PI * wavelength * dist / pixel_size ** 2)
-    #return int((pow(2, cp.ceil(cp.log2(dim + pad_pix))) - dim) * 0.5)
-    return int(pow(2, np.ceil(np.log(dim)/np.log(2))))
+def _calc_pad_width(dim, pixel_size, wavelength, dist):
+    pad_pix = cp.ceil(PI * wavelength * dist / pixel_size ** 2)
+    return int((pow(2, cp.ceil(cp.log2(dim + pad_pix))) - dim) * 0.5)
 
 
 def _calc_pad_val(data):

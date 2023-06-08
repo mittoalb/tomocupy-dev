@@ -197,16 +197,11 @@ class TomoFunctions():
         if self.args.retrieve_phase_method == 'paganin':
             data[:] = retrieve_phase.paganin_filter(
                 data,  self.args.pixel_size*1e-4, self.args.propagation_distance/10, self.args.energy, \
-                self.args.retrieve_phase_alpha, self.args.retrieve_phase_method)
+                self.args.retrieve_phase_alpha, filt=self.args.retrieve_phase_method)
         elif self.args.retrieve_phase_method == 'Gpaganin':
             data[:] = retrieve_phase.paganin_filter(
                 data,  self.args.pixel_size*1e-4, self.args.propagation_distance/10, self.args.energy, \
-                self.args.delta_beta, self.args.retrieve_phase_method)
-        elif self.args.retrieve_phase_method == 'Zpaganin':
-            data[:] = retrieve_phase.paganin_filter(
-                data,  self.args.pixel_size*1e-4, self.args.propagation_distance/10, self.args.energy, \
-                self.args.delta_beta, self.args.retrieve_phase_method, self.args.retrieve_phase_gamma, \
-                self.args.retrieve_phase_theta)
+                self.args.delta_beta, filt=self.args.retrieve_phase_method)
                
         if self.args.rotate_proj_angle != 0:
             data[:] = adjust_projections.rotate(data,self.args.rotate_proj_angle,self.args.rotate_proj_order)
