@@ -92,13 +92,13 @@ def paganin_filter(
     # Compute the reciprocal grid.
     dx, dy, dz = data.shape
     if method == 'paganin':
-    	w2 = _reciprocal_grid(pixel_size, dy + 2 * py, dz + 2 * pz)
+        w2 = _reciprocal_grid(pixel_size, dy + 2 * py, dz + 2 * pz)
         phase_filter = cp.fft.fftshift(
-        	_paganin_filter_factor(energy, dist, alpha, w2))
+            _paganin_filter_factor(energy, dist, alpha, w2))
     elif method == 'Gpaganin':
         kf = _reciprocal_gridG(pixel_size, dy + 2 * py, dz + 2 * pz)
         phase_filter = cp.fft.fftshift(
-        	_paganin_filter_factorG(energy, dist, kf, pixel_size, db))
+            _paganin_filter_factorG(energy, dist, kf, pixel_size, db))
 
     prj = cp.full((dy + 2 * py, dz + 2 * pz), val, dtype=data.dtype)
     _retrieve_phase(data, phase_filter, py, pz, prj, pad)
