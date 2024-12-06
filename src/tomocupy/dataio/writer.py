@@ -287,7 +287,7 @@ class Writer():
                 levels = min(max_levels(int(params.nz / 2**args.binning), end-st),6)
                 log.info(f"Resolution levels: {levels}")
                 
-                scale_factors = [float(args.pixel_size) * (i + 1) for i in range(levels)]
+                scale_factors = [float(args.pixel_size) * pow(2,i) for i in range(levels)]
                 self.zarr_array, datasets = initialize_zarr(
                     output_path=self.zarr_output_path,
                     base_shape=shape,
