@@ -415,9 +415,8 @@ def initialize_zarr(output_path, base_shape, chunks, dtype, num_levels, scale_fa
     datasets = []
     current_shape = base_shape
 
-    for level, _ in enumerate(scale_factors):
+    for level, scale in enumerate(scale_factors):
         level_name = f"{level}"
-        scale = float(args.pixel_size) * (pow(2,level))
 
         root_group.create_dataset(
             name=level_name,
