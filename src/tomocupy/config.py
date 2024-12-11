@@ -381,6 +381,10 @@ SECTIONS['reconstruction'] = {
         'type': int,
         'default': -1,
         'help': "End projection"},
+    'nproj-per-chunk': {
+        'type': int,
+        'default': 8,
+        'help': "Number of sinograms per chunk. Use lower numbers with computers with lower GPU memory.", },
     'rotation-axis-auto': {
         'default': 'manual',
         'type': str,
@@ -463,6 +467,14 @@ SECTIONS['output'] ={
         'default': '8,64,64',
         'type': str,
         'help': "ZARR chunk size"},
+    'large-data': {
+        'default': False,
+        'type': bool,
+        'help': "If Active it computes ldchunk chunks of angular projections"},
+    'ldchunk': {
+        'default': 10,
+        'type': int,
+        'help': "Number of angular chunks for large-data"},                  
     'clear-folder': {
         'default': 'False',
         'type': str,

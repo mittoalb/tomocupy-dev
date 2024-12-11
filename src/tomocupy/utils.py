@@ -49,7 +49,7 @@ import numexpr as ne
 import sys
 import os
 import tifffile as tiff
-from skimage.transform import resize
+from scipy.ndimage import zoom
 import time
 from functools import wraps
 import subprocess
@@ -274,33 +274,29 @@ def param_from_dxchange(hdf_file, data_path, attr=None, scalar=True, char_array=
                 return None
         except KeyError:
             return None
-            
-           
-def downsampleZarr(data, scale_factor=2, max_levels=1):
+
+
+def downsampleZarr(volume, scale_factor):
     """
-    Create a multi-level downsampled version of the input data.
+    Downsample a 3D volume by a given scale factor using scipy.ndimage.zoom.
 
     Parameters:
-    - data (numpy array): The input image data to be downsampled.
-    - scale_factor (int, optional): Factor by which to downsample the data at each level. Default is 2.
-    - max_levels (int, optional): Maximum number of downsampled levels to generate. Default is 6.
+    - volume (numpy array): Input 3D volume (e.g., [z, y, x]).
+    - scale_factor (int): Factor by which to downsample (e.g., 2 for halving).
 
     Returns:
-    - levels (list of numpy arrays): A list containing the original data and each downsampled level.
-
-    Logs:
-    - Information about the shape and data type of each downsampled level.
+    - numpy array: Downsampled volume.
     """
-    current_level = data
-    levels = [current_level]
-    for _ in range(max_levels):
-        new_shape = tuple(max(1, dim // 1) for dim in current_level.shape)
-        if min(new_shape) <= 1:
-            break
-        current_level = current_level#resize(current_level, new_shape, order=0, preserve_range=True, anti_aliasing=True)
-        print(current_level.shape)
-        levels.append(current_level)
-    return levels            
+    if scale_factor == 1:
+        return volume  # No downsampling needed for the highest resolution
+
+    # Calculate the zoom factors for each axis
+    zoom_factors = (1 / scale_factor, 1 / scale_factor, 1 / scale_factor)
+
+    # Perform downsampling using interpolation
+    downsampled = zoom(volume, zoom_factors, order=1)  # Use order=1 for bilinear interpolation
+
+    return downsampled
     
     
 def clean_zarr(output_path):
