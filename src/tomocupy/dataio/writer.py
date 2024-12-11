@@ -41,6 +41,7 @@
 from tomocupy import config
 from tomocupy import logging
 from tomocupy.global_vars import args, params
+from tomocupy.utils import downsampleZarr
 import numpy as np
 import h5py
 import os
@@ -59,7 +60,6 @@ import time
 import cupy as cp
 from pathlib import PosixPath
 from types import SimpleNamespace
-from scipy.ndimage import zoom
 
 
 __author__ = "Viktor Nikitin"
@@ -220,7 +220,8 @@ class Writer():
         if args.save_format == 'zarr':  # Zarr format support
             fnameout += '.zarr'
             self.zarr_output_path = fnameout
-            clean_zarr(self.zarr_output_path)
+            if not args.large_data:
+                 clean_zarr(self.zarr_output_path)
             log.info(f'Zarr dataset will be created at {fnameout}')
             log.info(f"ZARR chunk structure: {args.zarr_chunk}")
               
@@ -254,7 +255,7 @@ class Writer():
             pass
 
 
-    def write_data_chunk(self, rec, st, end, k, shift_index):
+    def write_data_chunk(self, rec, st, end, k):
         """Writing the kth data chunk to hard disk"""
 
         if args.save_format == 'tiff':
@@ -276,15 +277,14 @@ class Writer():
         elif args.save_format == 'zarr':  # Zarr format support
 
             chunks = [int(c.strip()) for c in args.zarr_chunk.split(',')]
-
             if not hasattr(self, 'zarr_array'):
-
                 shape = (int(params.nz / 2**args.binning), params.n, params.n)  # Full dataset shape
                 print('initialize')
+                max_levels = lambda X, Y: (lambda r: (int(r).bit_length() - 1) if r != 0 else (X.bit_length() - 1))(int(X) % int(Y))
 
-                max_levels = lambda X, Y: (lambda r: (int(r).bit_length() - 1) if r != 0 else (int(X // Y).bit_length() - 1))(int(X) % int(Y))
+                #levels = min(max_levels(params.nz, end-st),6)
+                levels = min(max_levels(int(rec.shape[0]), end-st),6)
 
-                levels = min(max_levels(int(params.nz / 2**args.binning), end-st),6)
                 log.info(f"Resolution levels: {levels}")
                 
                 scale_factors = [float(args.pixel_size) * (i + 1) for i in range(levels)]
@@ -302,8 +302,8 @@ class Writer():
             write_zarr_chunk(
                 zarr_group=self.zarr_array,  # Pre-initialized Zarr container
                 data_chunk=rec[:end - st],  # Data chunk to save
-                start=st-shift_index,  # Starting index for this chunk along the z-axis
-                end=end-shift_index    # Ending index for this chunk along the z-axis
+                start=st-args.start_row,  # Starting index for this chunk along the z-axis
+                end=end-args.start_row    # Ending index for this chunk along the z-axis
             )
 
     def write_data_try(self, rec, cid, id_slice):
@@ -371,8 +371,7 @@ def fill_zarr_meta(root_group, datasets, output_path, metadata_args, mode='w'):
         "datasets": datasets,
         "type": "gaussian",
         "metadata": {
-            "method": "skimage.transform.resize",
-            "version": "0.16.1",
+            "method": "scipy.ndimage.zoom",
             "args": [True],
             "kwargs": {
                 "anti_aliasing": True,
@@ -389,11 +388,58 @@ def fill_zarr_meta(root_group, datasets, output_path, metadata_args, mode='w'):
         metadata_file = os.path.join(output_path, 'multiscales.json')
         with open(metadata_file, 'w') as f:
             json.dump({"multiscales": multiscales}, f, indent=4)
+    
+def write_zarr_chunk(zarr_group, data_chunk, start, end):
+    """
+    Write a chunk of data into the Zarr container at all resolutions, summing with existing data if 'large_data' is active.
 
+    Parameters:
+    - zarr_group (zarr.Group): The initialized Zarr group containing multiscale datasets.
+    - data_chunk (np.ndarray): The data chunk to write (highest resolution).
+    - start (int): Start index in the first dimension (z-axis) for the highest resolution.
+    - end (int): End index in the first dimension (z-axis) for the highest resolution.
+    - large_data (bool): If True, sum the incoming data chunk with pre-existing data in the Zarr array.
+    """
+    for level in sorted(zarr_group.keys(), key=int):  # Process levels in order (0, 1, ...)
+        zarr_array = zarr_group[level]  # Access the dataset for the current level
 
+        # Calculate the downscaling factor for this resolution level
+        scale_factor = 2 ** int(level)
+
+        # Downsample data chunk for this resolution level
+        if scale_factor > 1:
+            downsampled_chunk = downsampleZarr(data_chunk, scale_factor)
+        else:
+            downsampled_chunk = data_chunk
+
+        # Calculate the start and end indices for the current resolution
+        level_start = start // scale_factor
+        level_end = end // scale_factor
+
+        expected_z_size = level_end - level_start
+        actual_z_size = downsampled_chunk.shape[0]
+
+        if expected_z_size != actual_z_size:
+            raise ValueError(
+                f"Mismatch between expected z-size ({expected_z_size}) "
+                f"and actual z-size ({actual_z_size}) at level {level}."
+            )
+
+        # Fetch existing data if 'large_data' is active
+        if args.large_data:
+            existing_data = zarr_array[level_start:level_end, :, :]
+            downsampled_chunk = existing_data + downsampled_chunk
+
+        # Write the (summed or replaced) downsampled chunk into the Zarr dataset
+        zarr_array[level_start:level_end, :, :] = downsampled_chunk
+
+        # Optionally log the operation
+        # log.info(f"Saved chunk to level {level} [{level_start}:{level_end}] with shape {downsampled_chunk.shape}")
+        
+    
 def initialize_zarr(output_path, base_shape, chunks, dtype, num_levels, scale_factors, compression='None'):
     """
-    Initialize a multiscale Zarr container with specified levels, dimensions, and compression.
+    Initialize or open a multiscale Zarr container based on the existence of the store.
 
     Parameters:
     - output_path (str): Path to the Zarr file.
@@ -403,22 +449,53 @@ def initialize_zarr(output_path, base_shape, chunks, dtype, num_levels, scale_fa
     - num_levels (int): Number of multiresolution levels.
     - scale_factors (list): List of scale factors for each level.
     - compression (str): Compression algorithm.
-    
+
     Returns:
-    - zarr.Group: The initialized Zarr group containing multiscale datasets.
+    - zarr.Group: The initialized or opened Zarr group containing multiscale datasets.
     - list: Dataset metadata for multiscales.
     """
+    # Check if the output path (store) already exists
+    store_exists = os.path.exists(output_path) and os.path.isdir(output_path)
+
+    # Prepare the store reference
     store = zarr.DirectoryStore(output_path)
     compressor = Blosc(cname=compression, clevel=5, shuffle=2)
+
+    if store_exists:
+        return load_zarr(store, output_path, num_levels)
+    else:
+        return create_zarr(store, output_path, base_shape, chunks, dtype, num_levels, scale_factors, compressor)
+
+
+def create_zarr(store, output_path, base_shape, chunks, dtype, num_levels, scale_factors, compressor):
+    """
+    Create the entire structure of a new Zarr container.
+
+    Parameters:
+    - store (zarr.DirectoryStore): Zarr store to initialize.
+    - output_path (str): Path to the Zarr container for logging purposes.
+    - base_shape (tuple): Shape of the full dataset at the highest resolution.
+    - chunks (tuple): Chunk size for the dataset.
+    - dtype: Data type of the dataset.
+    - num_levels (int): Number of multiresolution levels.
+    - scale_factors (list): List of scale factors for each level.
+    - compressor: Compressor instance for the datasets.
+
+    Returns:
+    - zarr.Group: The created Zarr group.
+    - list: Metadata for the datasets.
+    """
+    log.info(f"Creating a new Zarr container at {output_path}")
     root_group = zarr.group(store=store)
-    
-    datasets = []
+
     current_shape = base_shape
+    datasets = []
 
-    for level, _ in enumerate(scale_factors):
+    for level, scale_factor in enumerate(scale_factors):
         level_name = f"{level}"
-        scale = float(args.pixel_size) * (pow(2,level))
+        scale = float(scale_factor)
 
+        # Create the dataset for this resolution level
         root_group.create_dataset(
             name=level_name,
             shape=current_shape,
@@ -427,67 +504,51 @@ def initialize_zarr(output_path, base_shape, chunks, dtype, num_levels, scale_fa
             compressor=compressor
         )
 
+        # Add metadata
         datasets.append({
             "path": level_name,
             "coordinateTransformations": [
-                {"type": "scale", "scale": [scale] * 3}
+                {"type": "scale", "scale": [scale] * len(base_shape)}
             ]
         })
 
+        # Downscale the shape for the next level
         current_shape = tuple(max(1, s // 2) for s in current_shape)
 
     return root_group, datasets
 
-def write_zarr_chunk(zarr_group, data_chunk, start, end):
+
+
+
+def load_zarr(store, output_path, num_levels):
     """
-    Write a chunk of data into the Zarr container at all resolutions.
+    Load an existing Zarr container and return its group and dataset metadata.
 
     Parameters:
-    - zarr_group (zarr.Group): The initialized Zarr group containing multiscale datasets.
-    - data_chunk (np.ndarray): The data chunk to write (highest resolution).
-    - start (int): Start index in the first dimension (z-axis) for the highest resolution.
-    - end (int): End index in the first dimension (z-axis) for the highest resolution.
-    """
-    for level in sorted(zarr_group.keys(), key=int):  # Process levels in order (0, 1, ...)
-        zarr_array = zarr_group[level]  # Access the dataset for the current level
-
-        # Calculate the downscaling factor for this resolution level
-        scale_factor = 2 ** int(level)
-        # Downsample data chunk for this resolution level
-        if scale_factor > 1:
-            downsampled_chunk = downsample_volume(data_chunk, scale_factor)
-        else:
-            downsampled_chunk = data_chunk
-
-        level_start = start // scale_factor
-        level_end = end // scale_factor
-
-        expected_z_size = level_end - level_start
-        actual_z_size = downsampled_chunk.shape[0]
-
-        # Write the downsampled chunk into the Zarr dataset
-        zarr_array[level_start:level_end, :, :] = downsampled_chunk
-        #log.info(f"Saved chunk to level {level} [{level_start}:{level_end}] with shape {downsampled_chunk.shape}")
-
-
-def downsample_volume(volume, scale_factor):
-    """
-    Downsample a 3D volume by a given scale factor using scipy.ndimage.zoom.
-
-    Parameters:
-    - volume (numpy array): Input 3D volume (e.g., [z, y, x]).
-    - scale_factor (int): Factor by which to downsample (e.g., 2 for halving).
+    - store (zarr.DirectoryStore): The Zarr store to load.
+    - output_path (str): Path to the Zarr file (for logging purposes).
+    - num_levels (int): Number of multiresolution levels to validate.
 
     Returns:
-    - numpy array: Downsampled volume.
+    - zarr.Group: The loaded Zarr group.
+    - list: Metadata for the datasets.
     """
-    if scale_factor == 1:
-        return volume  # No downsampling needed for the highest resolution
+    # Open the existing Zarr group in read-write mode
+    root_group = zarr.open(store=store, mode='r+')
+    log.info(f"Opened existing Zarr container at {output_path}")
 
-    # Calculate the zoom factors for each axis
-    zoom_factors = (1 / scale_factor, 1 / scale_factor, 1 / scale_factor)
+    # Gather metadata from the existing structure
+    datasets = []
+    for level in range(num_levels):
+        level_name = f"{level}"
+        if level_name not in root_group:
+            raise ValueError(f"Level {level} not found in the existing Zarr group at {output_path}")
 
-    # Perform downsampling using interpolation
-    downsampled = zoom(volume, zoom_factors, order=1)  # Use order=1 for bilinear interpolation
+        datasets.append({
+            "path": level_name,
+            "coordinateTransformations": [
+                {"type": "scale", "scale": None}  # Add scale details if needed
+            ]
+        })
 
-    return downsampled    
+    return root_group, datasets
